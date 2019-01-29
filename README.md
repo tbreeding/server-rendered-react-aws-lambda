@@ -10,4 +10,6 @@ Then `cd react-ssr` and run `npm install` followed by `npm start`
 
 App will be running locally on `http://localhost:3012`.
 
+The lambda function serving the application can be found in `/react-ssr/src/index.tsx`
+
 The build script takes all the `src` code and creates a `build` folder which can be deployed using `serverless deploy`
