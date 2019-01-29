@@ -1,0 +1,22 @@
+sudo: false
+dist: trusty
+services: docker
+
+language: node_js
+node_js: 8
+
+install: true
+script: ./bin/build
+
+cache:
+  directories:
+    - "react-ssr/node_modules"
+
+env:
+  global:
+  - RELEASES_S3_BUCKET=example_s3_bucket_name
+  - AWS_REGION=eu-west-2
+  # AWS_ACCESS_KEY - Ensure that they are encrypted - https://docs.travis-ci.com/user/encryption-keys/
+  - secure: ""
+  # AWS_SECRET_KEY - Ensure that they are encrypted - https://docs.travis-ci.com/user/encryption-keys/
+  - secure: ""

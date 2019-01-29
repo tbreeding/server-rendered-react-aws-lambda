@@ -1,0 +1,33 @@
+service: ${env:SERVERLESS_SSR_SERVICE_NAME, 'react-ssr-lambda'}
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    port: 3012
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: ${env:ENVIRONMENT, 'dev'}
+  deploymentBucket:
+    name: ${env:SERVERLESS_DEPLOYMENT_BUCKET, ''}
+  region: ${env:SERVERLESS_REGION, 'localhost'}
+  environment:
+    NODE_ENV: production
+
+functions:
+  renderApp:
+    handler: build/lambda.renderApp
+    package:
+      include:
+        - "build/**"
+        - "env.json"
+    events:
+      - http:
+          method: ANY
+          path: /
+      - http:
+          method: ANY
+          path: /{any+}

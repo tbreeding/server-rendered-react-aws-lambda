@@ -1,0 +1,111 @@
+#!/bin/bash
+
+set -e
+
+BINDIR=$(/usr/bin/dirname $0)
+APPDIR=$(bash -c "cd $BINDIR/..; pwd")
+
+echo "Installing aws cli"
+pip install --user awscli
+export PATH=$PATH:$HOME/.local/bin
+
+echo "Configuring aws cli"
+mkdir -p ~/.aws
+
+# ensure that you have set up serverless with the right AWS permissions
+# and store your  AWS_ACCESS_KEY and AWS_SECRET_KEY in your local ~/.aws/credentials
+# so that travis can access these
+# see here for more info --> https://serverless.com/framework/docs/providers/aws/guide/credentials#setup-with-the-aws-cli
+cat > ~/.aws/credentials << EOL
+[serverless]
+aws_access_key_id = ${AWS_ACCESS_KEY}
+aws_secret_access_key = ${AWS_SECRET_KEY}
+EOL
+
+cat > ~/.aws/config << EOL
+[serverless]
+region = ${AWS_REGION}
+EOL
+
+echo "Installing webpack"
+npm install -g webpack webpack-cli
+
+echo "Switching to react app (tests)"
+cd $APPDIR/react-ssr
+
+# you can use this to add env variables at build time, these will be included in the app
+echo "Adding env.json file in react app"
+cat << EOF > env.json
+{
+    "url": {
+        "base": "/"
+    },
+    "api": {
+        "endpoint": "http://localhost:3010/api/"
+    }
+}
+
+EOF
+
+echo "Installing dependencies"
+npm install
+
+# we want to ensure that all test pass before building the app
+echo "Running react tests"
+npm test
+
+# Create deployments for PRs or master branch, but only build any other branch
+# If we want to create a deployment for a branch, for individual testing, then create the PR
+# This avoids many application versions on beanstalk just by pushing branches.
+if [[ $TRAVIS_PULL_REQUEST == "false" ]] && [[ $TRAVIS_BRANCH != "master" ]]; then
+    echo "Not a pull request or master, stopping."
+    exit
+fi
+
+echo "Calculating version"
+if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
+    VERSION=release-$TRAVIS_BUILD_NUMBER
+else
+    VERSION=branch-$TRAVIS_PULL_REQUEST_BRANCH-$TRAVIS_BUILD_NUMBER
+fi
+
+echo "Switching to lambda api (build)"
+cd $APPDIR/lambda-api
+
+echo "building lambda api"
+npm run build
+
+# npm run build in react ssr
+echo "Switching to react app (build)"
+cd $APPDIR/react-ssr
+
+echo "Building react-ssr app"
+npm run build
+
+echo "Switching to main dir"
+cd $APPDIR
+
+echo "Building deployment artifact"
+ARTIFACT=$VERSION.zip
+zip -r $ARTIFACT bin react-ssr/build react-ssr/serverless.yml lambda-api/build lambda-api/serverless.yml
+
+echo "Uploading artifact to S3"
+aws s3 cp --profile profile-build $ARTIFACT s3://$RELEASES_S3_BUCKET/$ARTIFACT
+
+echo "Removing older versions"
+# We want to keep the last 100 builds.
+# Because we cannot provide a sort on the query we need to select more than 100 and remove what we dont want.
+# This will only be an issue if the 100 we select are all the latest versions (in which case we need some manual intervention).
+
+if (( TRAVIS_BUILD_NUMBER > 100 )); then
+    MAX_BUILD=$(( TRAVIS_BUILD_NUMBER-100 ))
+    echo "Removing up to build $MAX_BUILD"
+    ARTIFACTS=$(aws s3api list-objects-v2 --profile profile-build --max-items 200 --bucket $RELEASES_S3_BUCKET | jq -r ".Contents[] | .Key")
+    for KEY in $ARTIFACTS; do
+        ITERATOR_BUILD=$(echo "$KEY" | grep -oP "((?<=-)[0-9]+)(?=\.zip)")
+        if (( ITERATOR_BUILD < MAX_BUILD )); then
+            echo "Deleting s3://$RELEASES_S3_BUCKET/$KEY"
+            aws s3 rm --profile profile-build s3://$RELEASES_S3_BUCKET/$KEY
+        fi
+    done
+fi
