@@ -1,6 +1,8 @@
 ## Search Server Rendered React App
 
-This is a simple react app rendered fron a node server on AWS lambda, using the serverless-framework.
+Starter code for react app rendered fron a node server on AWS lambda, using the serverless-framework.
+
+The blog article for this code can be found here https://tinyurl.com/yb5grk7b
 
 We do not make use of express in this repo, only plain node.
 
